@@ -1,14 +1,14 @@
 <?php
 /**
  * Plugin Name: Login for Cloudflare Access
- * Plugin URI: https://wp-glogin.com/
+ * Plugin URI: https://github.com/aarhus/cloudflare-access-login
  * Description: Simple secure login for WordPress through users' Cloudflare Access accounts (uses secure OAuth2, and MFA if enabled)
  * Version: 3.4.5
- * Author: WPGlogin Team
- * Author URI: https://wp-glogin.com/
+ * Author: aarhus
+ * Author URI: https://ko-fi.com/aarhus
  * License: GPL3
  * Network: true
- * Text Domain: google-apps-login
+ * Text Domain: cloudflare-access-login
  * Domain Path: /lang
  */
 
