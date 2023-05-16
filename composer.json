@@ -3,7 +3,8 @@
         "auth0/auth0-php": "^7.9.2",
         "codercat/jwk-to-pem": "^1.1",
         "guzzlehttp/guzzle": "~6.0",
-        "http-interop/http-factory-guzzle": "^1.2"
+        "http-interop/http-factory-guzzle": "^1.2",
+        "guzzlehttp/psr7": "1.9.1"
     },
     "config": {
         "allow-plugins": {
