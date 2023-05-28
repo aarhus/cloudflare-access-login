@@ -1,6 +1,6 @@
 === Login for Cloudflare Access ===
-Contributors: lionsher, nathansingh, chrisakelley
-Tags: login, google, authentication, oauth, google login, Cloudflare Access, Cloudflare Access, sso, single-sign-on, auth, intranet, g suite
+Contributors: aarhus
+Tags: login, authentication, oauth, Cloudflare Access, Cloudflare Access, sso, single-sign-on, auth, intranet
 Requires at least: 6.0.0
 Tested up to: 6.2.0
 Stable tag: 0.0.1
