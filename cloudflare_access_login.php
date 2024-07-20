@@ -16,15 +16,11 @@ $path = rtrim(plugin_dir_path(__FILE__), '/\\');
 require_once $path . '/vendor/autoload.php';
 //require_once plugin_dir_path(__FILE__) . '/core/core_cloudflare_access_login.php';
 
-
 use Auth0\SDK\Helpers\Tokens\AsymmetricVerifier;
 use Auth0\SDK\Helpers\Tokens\IdTokenVerifier;
 use CoderCat\JWKToPEM\JWKConverter;
 
-class CFA_Service_Exception extends Exception {} // @codingStandardsIgnoreLine
-
-
-class Cloudflare_Access_Login
+class CFA_Cloudflare_Access_Login
 {
 
     protected $options = null;
@@ -42,7 +38,6 @@ class Cloudflare_Access_Login
     {
         $this->addActions();
     }
-
 
     public function cfa_add_plugin_page()
     {
@@ -62,7 +57,6 @@ class Cloudflare_Access_Login
         $this->cfa_options = get_option('cfa_option_name');
         ?>
 
-
         <div class="wrap">
         <h2>Login for Cloudflare Zero Trust</h2>
             <p>Automatically login to your Wordpress instance by putting your /wp-admin folder behind Cloudflare Zero Trust.  </p>
@@ -79,9 +73,8 @@ class Cloudflare_Access_Login
         ?>
             </form>
 
-            Get help by visiting our <a href="https://github.com/aarhus/cloudflare-access-login" target="_blank">Github Repository</a>
+            Get help by visiting our <a href="https://github.com/aarhus/cloudflare-access-login" target="_blank">Github Repository</a> or if you would like to support the plugin visit <a href="https://ko-fi.com/aarhus" target="_blank"></a>my Ko-fi page</a>
 
-    <script type='text/javascript' src='https://storage.ko-fi.com/cdn/widget/Widget_2.js'></script><script type='text/javascript'>kofiwidget2.init('Support @aarhus on Ko-fi', '#29abe0', 'O4O5KZQAS');kofiwidget2.draw();</script>
         </div>
     <?php }
 
@@ -152,12 +145,10 @@ class Cloudflare_Access_Login
         );
     }
 
-
-
-
-
     protected function getKey($jwksUrl)
     {
+
+
         $client = new GuzzleHttp\Client();
         $res = $client->request('GET', $jwksUrl);
 
@@ -180,39 +171,40 @@ class Cloudflare_Access_Login
         return $rtn;
     }
 
-
-
-
-
+    private function cfa_sanitize_jwt($input) {
+        $matches = [];
+        $a = preg_match("/^[a-zA-Z0-9-_]+\.[a-zA-Z0-9-_]+\.[a-zA-Z0-9-_]+$/", $input, $matches);
+        return ($matches ? $input : null);
+    }
 
     public function cfaLoginForm()
     {
 
-
         if (!isset($_COOKIE['CF_Authorization'])) {
             return;
         }
-
-        error_log("CF_Authorization:".$_COOKIE['CF_Authorization']);
-
 
         try {
             $opt = get_option('cfa_option_name');
             if (!isset($opt["issuer"]) || !isset($opt["audience"])) {
                 return false;
             }
-            $id_token = $_COOKIE['CF_Authorization'];
-            $key = $this->getKey("https://".$opt["issuer"] . '/cdn-cgi/access/certs');
+            $id_token = $this->cfa_sanitize_jwt($_COOKIE['CF_Authorization']);
+
+            if ($id_token === null) {
+
+                return;
+            }
+            $key = $this->getKey("https://".$opt["issuer"] . '.cloudflareaccess.com/cdn-cgi/access/certs');
             $signature_verifier = new AsymmetricVerifier($key);
 
-            $token_verifier = new IdTokenVerifier("https://".$opt["issuer"], $opt["audience"], $signature_verifier);
+            $token_verifier = new IdTokenVerifier("https://".$opt["issuer"].'.cloudflareaccess.com', $opt["audience"], $signature_verifier);
             $user_identity = $token_verifier->verify($id_token);
 
             $user = get_user_by('email', $user_identity["email"]);
             if (!$user) {
                 return;
             }
-
 
             $secure_cookie = is_ssl();
 
@@ -228,33 +220,24 @@ class Cloudflare_Access_Login
 
             wp_set_auth_cookie($user->ID, false, $secure_cookie);
             do_action('wp_login', $user->user_login, $user);
-            $redirect_to = empty($_GET['redirect_to'])
-            ? '/wp-admin/'
-            : filter_var(wp_unslash($_GET['redirect_to']), FILTER_SANITIZE_URL);
+            $redirect_to = filter_var(wp_unslash($_GET['redirect_to']), FILTER_SANITIZE_URL);
+
+            if (strlen($redirect_to)==0) {
+                $redirect_to='/wp-admin/';
+            }
 
             $login_redirect = add_query_arg(time(), '', $redirect_to);
             wp_safe_redirect($login_redirect);
             exit;
-
-
 
         } catch (\Exception $e) {
             print "<pre>"; print $e->getMessage(); print "</pre>";
             return false;
         }
 
-        //$token = json_decode(base64_decode(str_replace('_', '/', str_replace('-','+',explode('.', $_COOKIE['CF_Authorization'])[1]))));
-
-
     }
 
     // Create wordpress admin menu to collect the audience and issuer settings
-
-
-
-
-
-
 
     public function cfa_admin_menu()
     {
@@ -268,29 +251,10 @@ class Cloudflare_Access_Login
 
     }
 
-
-
-
-
-
     // Build our own nonce functions as wp_create_nonce is user dependent,
     // and our nonce is created when logged-out, then verified when logged-in
 
-
-
-
-
-
-
-
     const ERROR_FIELD_STYLE = 'border: 1px solid red;';
-
-
-
-
-
-
-
 
     // HOOKS AND FILTERS
     // *****************
@@ -301,16 +265,7 @@ class Cloudflare_Access_Login
         add_action(is_multisite() ? 'network_admin_menu' : 'admin_menu', array( $this, 'cfa_admin_menu' ));
         add_action('admin_init', array( $this, 'cfa_page_init' ));
 
-
     }
-
-
-
-
-
-
-
-
 
     protected $plugin_version = '0.0.1';
 
@@ -334,19 +289,6 @@ class Cloudflare_Access_Login
         return self::$instance;
     }
 
-    /**
-     * Activation Hook.
-     *
-     * @param bool $network_wide Is Network Wide.
-     *
-     * @return void
-     */
-
-
-
-
-
-
 
 
 }
@@ -356,10 +298,11 @@ class Cloudflare_Access_Login
  *
  * @return object
  */
-function cloudflare_access_login()
+function cfa_cloudflare_access_login()
 {
-    return Cloudflare_Access_Login::get_instance();
+    return CFA_Cloudflare_Access_Login::get_instance();
 }
 
 // Initialise at least once.
-cloudflare_access_login();
+
+cfa_cloudflare_access_login();
