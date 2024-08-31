@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: Login for Cloudflare Access
+ * Plugin Name: Admin Login for Cloudflare Access
  * Plugin URI: https://github.com/aarhus/cloudflare-access-login
  * Description: Simple secure login for WordPress through users' Cloudflare Access accounts (uses secure OAuth2, and MFA if enabled)
  * Version: 0.0.1
@@ -8,7 +8,7 @@
  * Author URI: https://ko-fi.com/aarhus
  * License: GPL3
  * Network: true
- * Text Domain: cloudflare-access-login
+ * Text Domain: admin-login-for-cloudflare
  * Domain Path: /lang
  */
 
@@ -16,11 +16,11 @@ $path = rtrim(plugin_dir_path(__FILE__), '/\\');
 require_once $path . '/vendor/autoload.php';
 //require_once plugin_dir_path(__FILE__) . '/core/core_cloudflare_access_login.php';
 
-use Auth0\SDK\Helpers\Tokens\AsymmetricVerifier;
-use Auth0\SDK\Helpers\Tokens\IdTokenVerifier;
-use CoderCat\JWKToPEM\JWKConverter;
+use Firebase\JWT\JWK;
+use Firebase\JWT\JWT;
 
-class CFA_Cloudflare_Access_Login
+
+class LFCFA_Cloudflare_Access_Login
 {
 
     protected $options = null;
@@ -29,7 +29,7 @@ class CFA_Cloudflare_Access_Login
      *
      * @var string
      */
-    protected static $option_prefix = "cfa_auth_";
+    protected static $option_prefix = "lfcfa_auth_";
 
     /**
      * Class Constructor.
@@ -39,22 +39,22 @@ class CFA_Cloudflare_Access_Login
         $this->addActions();
     }
 
-    public function cfa_add_plugin_page()
+    public function lfcfa_add_plugin_page()
     {
         add_menu_page(
-            __('Login for Cloudflare Zero Trust settings', 'cloudflare-access-login'),
-            __('Login for Cloudflare Zero Trust', 'cloudflare-access-login'),
+            __('Admin Login for Cloudflare Zero Trust settings', 'cloudflare-access-login'),
+            __('Admin Login for Cloudflare Zero Trust', 'cloudflare-access-login'),
             'manage_options', // capability
             'wibble', // menu_slug
-            array( $this, 'cfa_create_admin_page' ), // function
+            array( $this, 'lfcfa_create_admin_page' ), // function
             'dashicons-admin-generic', // icon_url
             2 // position
         );
     }
 
-    public function cfa_create_admin_page()
+    public function lfcfa_create_admin_page()
     {
-        $this->cfa_options = get_option('cfa_option_name');
+        $this->lfcfa_options = get_option('lfcfa_option_name');
         ?>
 
         <div class="wrap">
@@ -67,7 +67,7 @@ class CFA_Cloudflare_Access_Login
 
             <form method="post" action="options.php">
         <?php
-        settings_fields('cfa_option_group');
+        settings_fields('lfcfa_option_group');
         do_settings_sections('wibble-admin');
         submit_button();
         ?>
@@ -78,18 +78,18 @@ class CFA_Cloudflare_Access_Login
         </div>
     <?php }
 
-    public function cfa_page_init()
+    public function lfcfa_page_init()
     {
         register_setting(
-            'cfa_option_group', // option_group
-            'cfa_option_name', // option_name
-            array( $this, 'cfa_sanitize' ) // sanitize_callback
+            'lfcfa_option_group', // option_group
+            'lfcfa_option_name', // option_name
+            array( $this, 'lfcfa_sanitize' ) // sanitize_callback
         );
 
         add_settings_section(
-            'cfa_setting_section', // id
+            'lfcfa_setting_section', // id
             'Settings', // title
-            array( $this, 'cfa_section_info' ), // callback
+            array( $this, 'lfcfa_section_info' ), // callback
             'wibble-admin' // page
         );
 
@@ -98,7 +98,7 @@ class CFA_Cloudflare_Access_Login
             'Audience', // title
             array( $this, 'audience_callback' ), // callback
             'wibble-admin', // page
-            'cfa_setting_section' // section
+            'lfcfa_setting_section' // section
         );
 
         add_settings_field(
@@ -106,11 +106,11 @@ class CFA_Cloudflare_Access_Login
             'Issuer', // title
             array( $this, 'issuer_callback' ), // callback
             'wibble-admin', // page
-            'cfa_setting_section' // section
+            'lfcfa_setting_section' // section
         );
     }
 
-    public function cfa_sanitize($input)
+    public function lfcfa_sanitize($input)
     {
         $sanitary_values = array();
         if (isset($input['audience']) ) {
@@ -124,7 +124,7 @@ class CFA_Cloudflare_Access_Login
         return $sanitary_values;
     }
 
-    public function cfa_section_info()
+    public function lfcfa_section_info()
     {
         return "Here are some settings....";
     }
@@ -132,52 +132,55 @@ class CFA_Cloudflare_Access_Login
     public function audience_callback()
     {
         printf(
-            '<input class="regular-text" type="text" name="cfa_option_name[audience]" id="audience" value="%s">',
-            isset($this->cfa_options['audience']) ? esc_attr($this->cfa_options['audience']) : ''
+            '<input class="regular-text" type="text" name="lfcfa_option_name[audience]" id="audience" value="%s">',
+            isset($this->lfcfa_options['audience']) ? esc_attr($this->lfcfa_options['audience']) : ''
         );
     }
 
     public function issuer_callback()
     {
         printf(
-            '<input class="regular-text" type="text" name="cfa_option_name[issuer]" id="issuer" value="%s">',
-            isset($this->cfa_options['issuer']) ? esc_attr($this->cfa_options['issuer']) : ''
+            '<input class="regular-text" type="text" name="lfcfa_option_name[issuer]" id="issuer" value="%s">',
+            isset($this->lfcfa_options['issuer']) ? esc_attr($this->lfcfa_options['issuer']) : ''
         );
     }
 
     protected function getKey($jwksUrl)
     {
 
+        if ( false === ( $rtn = get_transient( 'lfcfa_validator_key_cache' ) ) ) {
 
-        $client = new GuzzleHttp\Client();
-        $res = $client->request('GET', $jwksUrl);
+            // Key file is not cached so need to retrieve it
 
-        if ($res->getStatusCode() != '200') {
-            throw new \Exception('Could not fetch JWKS');
-        }
+            $client = new GuzzleHttp\Client();
+            $res = $client->request('GET', $jwksUrl);
 
-        $json = $res->getBody();
-        $jwks = json_decode($json);
+            if ($res->getStatusCode() != '200') {
+                return null;
+            }
 
-        $rtn = [];
-        foreach ($jwks->keys as $k) {
+            try {
+                $json = $res->getBody();
+                $rtn = json_decode($json, true);
 
-            $key_id = $k->kid;
 
-            $jwkConverter = new JWKConverter();
-            $key = $jwkConverter->toPEM((array) $k);
-            $rtn[$key_id] = $key;
+                set_transient( "lfcfa_validator_key_cache", $rtn, HOUR_IN_SECONDS );
+
+            }
+            catch (\Exception $e) {
+                return null;
+            }
         }
         return $rtn;
     }
 
-    private function cfa_sanitize_jwt($input) {
+    private function lfcfa_sanitize_jwt($input) {
         $matches = [];
         $a = preg_match("/^[a-zA-Z0-9-_]+\.[a-zA-Z0-9-_]+\.[a-zA-Z0-9-_]+$/", $input, $matches);
         return ($matches ? $input : null);
     }
 
-    public function cfaLoginForm()
+    public function lfcfaLoginForm()
     {
 
         if (!isset($_COOKIE['CF_Authorization'])) {
@@ -185,26 +188,40 @@ class CFA_Cloudflare_Access_Login
         }
 
         try {
-            $opt = get_option('cfa_option_name');
+            $opt = get_option('lfcfa_option_name');
             if (!isset($opt["issuer"]) || !isset($opt["audience"])) {
-                return false;
+                return;
             }
-            $id_token = $this->cfa_sanitize_jwt($_COOKIE['CF_Authorization']);
+            $id_token = $this->lfcfa_sanitize_jwt($_COOKIE['CF_Authorization']);
 
             if ($id_token === null) {
 
                 return;
             }
-            $key = $this->getKey("https://".$opt["issuer"] . '.cloudflareaccess.com/cdn-cgi/access/certs');
-            $signature_verifier = new AsymmetricVerifier($key);
 
-            $token_verifier = new IdTokenVerifier("https://".$opt["issuer"].'.cloudflareaccess.com', $opt["audience"], $signature_verifier);
-            $user_identity = $token_verifier->verify($id_token);
+            $keySet = $this->getKey("https://".$opt["issuer"] . '.cloudflareaccess.com/cdn-cgi/access/certs');
 
-            $user = get_user_by('email', $user_identity["email"]);
+            if ($keySet === null) {
+                return;
+            }
+
+
+            $decoded = JWT::decode(
+                $id_token,
+                JWK::parseKeySet($keySet)
+            );
+
+
+            if (!$decoded->email) {
+                return;
+            }
+
+
+            $user = get_user_by('email', $decoded->email);
             if (!$user) {
                 return;
             }
+
 
             $secure_cookie = is_ssl();
 
@@ -231,7 +248,7 @@ class CFA_Cloudflare_Access_Login
             exit;
 
         } catch (\Exception $e) {
-            print "<pre>"; print $e->getMessage(); print "</pre>";
+            print "Failed to validate your access as something went wrong";
             return false;
         }
 
@@ -239,14 +256,14 @@ class CFA_Cloudflare_Access_Login
 
     // Create wordpress admin menu to collect the audience and issuer settings
 
-    public function cfa_admin_menu()
+    public function lfcfa_admin_menu()
     {
         add_options_page(
-            __('Login for Cloudflare Zero Trust settings', 'cloudflare-access-login'),
-            __('Login for Cloudflare Zero Trust', 'cloudflare-access-login'),
+            __('Admin Login for Cloudflare Zero Trust settings', 'cloudflare-access-login'),
+            __('Admin Login for Cloudflare Zero Trust', 'cloudflare-access-login'),
             'manage_options',
-            'cfalogin_list_options',
-            array( $this, 'cfa_create_admin_page' )
+            'lfcfalogin_list_options',
+            array( $this, 'lfcfa_create_admin_page' )
         );
 
     }
@@ -261,9 +278,9 @@ class CFA_Cloudflare_Access_Login
 
     protected function addActions()
     {
-        add_action('login_form', array( $this, 'cfaLoginForm' ), 1);
-        add_action(is_multisite() ? 'network_admin_menu' : 'admin_menu', array( $this, 'cfa_admin_menu' ));
-        add_action('admin_init', array( $this, 'cfa_page_init' ));
+        add_action('login_form', array( $this, 'lfcfaLoginForm' ), 1);
+        add_action(is_multisite() ? 'network_admin_menu' : 'admin_menu', array( $this, 'lfcfa_admin_menu' ));
+        add_action('admin_init', array( $this, 'lfcfa_page_init' ));
 
     }
 
@@ -298,11 +315,11 @@ class CFA_Cloudflare_Access_Login
  *
  * @return object
  */
-function cfa_cloudflare_access_login()
+function lfcfa_cloudflare_access_login()
 {
-    return CFA_Cloudflare_Access_Login::get_instance();
+    return LFCFA_Cloudflare_Access_Login::get_instance();
 }
 
 // Initialise at least once.
 
-cfa_cloudflare_access_login();
+lfcfa_cloudflare_access_login();
